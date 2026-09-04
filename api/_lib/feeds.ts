@@ -8,9 +8,6 @@ export type Feed = {
 }
 
 export const NEWS_FEEDS: Feed[] = [
-  { id: 'hankyung-all', outlet: '한국경제', url: 'https://www.hankyung.com/feed/all-news', category: '경제' },
-  { id: 'hankyung-finance', outlet: '한국경제 증권', url: 'https://www.hankyung.com/feed/finance', category: '증권' },
-  { id: 'hankyung-it', outlet: '한국경제 IT', url: 'https://www.hankyung.com/feed/it', category: '테크' },
   { id: 'mk-headline', outlet: '매일경제', url: 'https://www.mk.co.kr/rss/30000001/', category: '경제' },
   { id: 'mk-international', outlet: '매일경제 국제', url: 'https://www.mk.co.kr/rss/30300018/', category: '국제' },
   { id: 'mk-realestate', outlet: '매일경제 부동산', url: 'https://www.mk.co.kr/rss/50300009/', category: '부동산' },
