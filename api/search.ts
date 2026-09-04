@@ -9,6 +9,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=900')
   const feed = {
+    id: 'google-news',
     outlet: 'Google 뉴스',
     category: '관심',
     url: `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`,

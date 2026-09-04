@@ -27,7 +27,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=300')
   const env = (globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }).process?.env
   const token = env?.FINNHUB_API_KEY
-  const tasks = [getExchange(), getBitcoin(), ...(token ? [getStock('AAPL', token)] : [])]
+  const rawSources = Array.isArray(req.query.sources) ? req.query.sources[0] : req.query.sources
+  const selected = rawSources !== undefined ? new Set(rawSources.split(',').filter(Boolean)) : null
+  const tasks = [
+    ...(!selected || selected.has('frankfurter') ? [getExchange()] : []),
+    ...(!selected || selected.has('upbit') ? [getBitcoin()] : []),
+    ...(token && (!selected || selected.has('finnhub')) ? [getStock('AAPL', token)] : []),
+  ]
   const results = await Promise.allSettled(tasks)
   const items = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
   return res.status(200).json({ items, fetchedAt: Date.now() })

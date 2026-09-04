@@ -1,7 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Menu, Plus, RefreshCw, Search, Sparkles, TrendingUp, X } from 'lucide-react'
+import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Menu, Plus, RefreshCw, Search, Settings2, Sparkles, TrendingUp, X } from 'lucide-react'
+import { SourceManager } from './components/SourceManager'
 import { relativeTime } from './lib/format'
 import { useKeywords } from './lib/useKeywords'
+import { useSources } from './lib/useSources'
 import type { Article, MarketItem, NewsResponse } from './types'
 
 const categories = ['전체', '경제', '증권', '부동산', '국제', '산업', '테크', '가상자산', '관심']
@@ -33,8 +35,10 @@ function App() {
   const [query, setQuery] = useState('')
   const [mobileSearch, setMobileSearch] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
+  const [showSources, setShowSources] = useState(() => window.location.hash === '#sources')
   const [onlyKeywords, setOnlyKeywords] = useState(true)
   const [keywords, setKeywords] = useKeywords()
+  const [enabledSources, setEnabledSources] = useSources()
   const [saved, setSaved] = useState<string[]>(loadSaved)
   const [keywordInput, setKeywordInput] = useState('')
   const [showKeywordForm, setShowKeywordForm] = useState(false)
@@ -49,14 +53,25 @@ function App() {
   useEffect(() => localStorage.setItem('todaynews-saved', JSON.stringify(saved)), [saved])
 
   useEffect(() => {
+    if (!enabledSources.includes('google-news')) setOnlyKeywords(false)
+  }, [enabledSources])
+
+  useEffect(() => {
+    const syncPage = () => setShowSources(window.location.hash === '#sources')
+    window.addEventListener('hashchange', syncPage)
+    return () => window.removeEventListener('hashchange', syncPage)
+  }, [])
+
+  useEffect(() => {
     const controller = new AbortController()
     async function loadNews() {
       setLoading(true)
       setLoadError('')
       try {
+        const newsSources = enabledSources.filter((source) => !['google-news', 'frankfurter', 'upbit', 'finnhub'].includes(source))
         const [main, ...searches] = await Promise.all([
-          getJson<NewsResponse>('/api/news', controller.signal),
-          ...keywords.map((keyword) => getJson<NewsResponse>(`/api/search?q=${encodeURIComponent(keyword)}`, controller.signal)
+          getJson<NewsResponse>(`/api/news?sources=${encodeURIComponent(newsSources.join(','))}`, controller.signal),
+          ...(enabledSources.includes('google-news') ? keywords : []).map((keyword) => getJson<NewsResponse>(`/api/search?q=${encodeURIComponent(keyword)}`, controller.signal)
             .catch(() => ({ articles: [], failed: [keyword], fetchedAt: Date.now() }))),
         ])
         setArticles(uniqueArticles([main.articles, ...searches.map((item) => item.articles)]))
@@ -69,13 +84,14 @@ function App() {
     }
     loadNews()
     return () => controller.abort()
-  }, [keywords, refreshKey])
+  }, [enabledSources, keywords, refreshKey])
 
   useEffect(() => {
     const controller = new AbortController()
-    getJson<{ items: MarketItem[] }>('/api/market', controller.signal).then((data) => setMarket(data.items)).catch(() => undefined)
+    const marketSources = enabledSources.filter((source) => ['frankfurter', 'upbit', 'finnhub'].includes(source))
+    getJson<{ items: MarketItem[] }>(`/api/market?sources=${encodeURIComponent(marketSources.join(','))}`, controller.signal).then((data) => setMarket(data.items)).catch(() => undefined)
     return () => controller.abort()
-  }, [refreshKey])
+  }, [enabledSources, refreshKey])
 
   const keywordArticles = useMemo(() => articles.filter((article) => article.matches.some((keyword) => keywords.includes(keyword))), [articles, keywords])
   const filtered = useMemo(() => {
@@ -91,7 +107,9 @@ function App() {
   const lead = filtered[0]
   const list = filtered.slice(showSaved ? 0 : 1)
   const toggleSave = (id: string) => setSaved((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
-  const resetHome = () => { setShowSaved(false); setActiveCategory('전체'); setQuery('') }
+  const openSources = () => { window.location.hash = 'sources'; setShowSources(true) }
+  const closeSources = () => { window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`); setShowSources(false) }
+  const resetHome = () => { closeSources(); setShowSaved(false); setActiveCategory('전체'); setQuery('') }
   const dateText = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
 
   function addKeyword(event: FormEvent) {
@@ -110,13 +128,14 @@ function App() {
         <span className="hidden h-5 w-px bg-black/15 sm:block" /><p className="hidden text-xs font-medium text-black/45 sm:block">나만의 인사이트 터미널</p>
         <div className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 md:flex"><Search className="h-4 w-4 text-black/35" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none placeholder:text-black/35" placeholder="뉴스, 기업, 키워드 검색" />{query && <button onClick={() => setQuery('')} aria-label="검색어 지우기"><X className="h-3.5 w-3.5 text-black/40" /></button>}</div>
         <button onClick={() => setMobileSearch(!mobileSearch)} className="md:hidden" aria-label="검색"><Search className="h-5 w-5" /></button>
+        <button onClick={openSources} className={`grid h-9 w-9 place-items-center rounded-full border transition ${showSources ? 'border-[#171914] bg-[#171914] text-white' : 'border-black/10 bg-white hover:border-black/30'}`} aria-label="연동 사이트 관리"><Settings2 className="h-4 w-4" /></button>
         <button onClick={() => setShowSaved(!showSaved)} className={`flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-bold transition ${showSaved ? 'border-[#e65f3c] bg-[#e65f3c] text-white' : 'border-black/10 bg-white hover:border-black/30'}`}><Bookmark className="h-4 w-4" /><span className="hidden sm:inline">저장한 뉴스</span>{saved.length > 0 && <span className="opacity-70">{saved.length}</span>}</button>
       </div>
       {mobileSearch && <div className="border-t border-black/10 px-5 py-3 md:hidden"><div className="flex items-center gap-2 rounded-full bg-white px-4 py-2"><Search className="h-4 w-4 text-black/35" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none" placeholder="뉴스 검색" /></div></div>}
-      <nav className="mx-auto flex max-w-[1440px] gap-7 overflow-x-auto px-5 sm:px-8 lg:px-12">{categories.map((category) => <button key={category} onClick={() => { setActiveCategory(category); setShowSaved(false) }} className={`shrink-0 border-b-2 py-3 text-sm font-bold transition ${activeCategory === category && !showSaved ? 'border-[#171914] text-[#171914]' : 'border-transparent text-black/40 hover:text-black'}`}>{category}</button>)}</nav>
+      {!showSources && <nav className="mx-auto flex max-w-[1440px] gap-7 overflow-x-auto px-5 sm:px-8 lg:px-12">{categories.map((category) => <button key={category} onClick={() => { setActiveCategory(category); setShowSaved(false) }} className={`shrink-0 border-b-2 py-3 text-sm font-bold transition ${activeCategory === category && !showSaved ? 'border-[#171914] text-[#171914]' : 'border-transparent text-black/40 hover:text-black'}`}>{category}</button>)}</nav>}
     </header>
 
-    <main className="mx-auto max-w-[1440px] px-5 pb-20 pt-10 sm:px-8 lg:px-12 lg:pt-14">
+    {showSources ? <SourceManager enabled={enabledSources} onChange={setEnabledSources} onClose={closeSources} /> : <main className="mx-auto max-w-[1440px] px-5 pb-20 pt-10 sm:px-8 lg:px-12 lg:pt-14">
       <section className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#e65f3c]">{showSaved ? 'MY ARCHIVE' : 'DAILY BRIEFING'}</p><h1 className="text-3xl font-black tracking-[-0.05em] sm:text-5xl">{showSaved ? '저장한 뉴스' : '오늘의 핵심만,'}<br className="sm:hidden" />{!showSaved && ' 빠르게.'}</h1><p className="mt-3 text-sm text-black/50">{showSaved ? `${saved.length}개의 기사를 보관했습니다.` : `${dateText} · ${articles.length}개 기사 업데이트`}</p></div>
         {!showSaved && <div className="flex flex-wrap items-end gap-5 border-y border-black/10 py-3 sm:border-0 sm:py-0">{market.map((item) => <div key={item.id} className="min-w-24"><p className="text-[10px] font-bold text-black/40">{item.name}</p><p className="mt-1 truncate text-sm font-black">{item.value}</p>{item.change !== null && <p className={`text-[11px] font-bold ${item.change >= 0 ? 'text-[#e65f3c]' : 'text-[#375bd2]'}`}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%</p>}</div>)}<button onClick={refresh} disabled={loading} className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-white disabled:opacity-40" aria-label="새로고침"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button></div>}
@@ -131,7 +150,7 @@ function App() {
         {!showSaved && <section className="grid overflow-hidden rounded-2xl border border-black/10 bg-white shadow-card lg:grid-cols-[1.45fr_0.55fr]"><div className="p-6 sm:p-9 lg:p-11"><div className="mb-7 flex items-center gap-2"><span className="flex items-center gap-1.5 rounded-full bg-[#fff0eb] px-3 py-1.5 text-[11px] font-black text-[#d94d2b]"><Flame className="h-3.5 w-3.5" fill="currentColor" /> 최신 주요 뉴스</span></div><p className="mb-3 text-xs font-bold text-[#e65f3c]">{lead.category}{lead.matches.length > 0 && ` · ${lead.matches.join(', ')}`}</p><a href={lead.link} target="_blank" rel="noopener noreferrer"><h2 className="max-w-3xl text-[28px] font-black leading-[1.22] tracking-[-0.045em] transition hover:text-[#e65f3c] sm:text-[42px]">{lead.title}</h2></a><div className="mt-7 border-l-2 border-[#e65f3c] pl-4 sm:pl-5"><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-black/40"><Sparkles className="h-3.5 w-3.5 text-[#e65f3c]" /> RSS 요약</p><p className="max-w-2xl text-sm leading-7 text-black/65">{lead.summary}</p></div><div className="mt-8 flex items-center justify-between"><div className="flex items-center gap-2 text-xs text-black/40"><span className="font-bold text-black/70">{lead.outlet}</span><span>·</span><span>{relativeTime(lead.time)}</span></div><SaveButton active={saved.includes(lead.id)} onClick={() => toggleSave(lead.id)} /></div></div><div className="relative hidden min-h-[420px] overflow-hidden bg-[#1d2928] lg:block"><div className="absolute -right-20 -top-10 h-72 w-72 rounded-full border-[48px] border-[#e65f3c]/90" /><div className="absolute -bottom-28 -left-20 h-80 w-80 rounded-full border-[65px] border-[#d6c892]/70" /><div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/30" /><div className="absolute bottom-8 left-8 right-8 text-white"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">TODAY'S SIGNAL</p><p className="mt-2 text-lg font-bold">관심 있는 변화만<br />놓치지 마세요.</p></div></div></section>}
         <section className="mt-14 grid gap-10 lg:grid-cols-[1fr_330px]"><div><div className="mb-2 flex items-center justify-between"><h2 className="text-xl font-black tracking-[-0.03em]">{showSaved ? '보관한 기사' : activeCategory === '전체' ? onlyKeywords ? '관심 키워드 주요 뉴스' : '전체 주요 뉴스' : `${activeCategory} 주요 뉴스`}</h2><span className="text-xs text-black/35">{filtered.length}개 뉴스</span></div><div className="divide-y divide-black/10">{list.map((article) => <article key={article.id} className="group grid gap-4 py-6 sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><div className="mb-2 flex items-center gap-2"><span className="rounded bg-black/[0.06] px-2 py-1 text-[10px] font-black">{article.matches[0] ?? article.category}</span></div><a href={article.link} target="_blank" rel="noopener noreferrer"><h3 className="text-lg font-black leading-snug tracking-[-0.025em] transition group-hover:text-[#e65f3c] sm:text-xl">{article.title}</h3></a><p className="mt-2 line-clamp-2 text-sm leading-6 text-black/50">{article.summary}</p><div className="mt-3 flex items-center gap-2 text-[11px] text-black/35"><span className="font-bold text-black/60">{article.outlet}</span><span>·</span><Clock3 className="h-3 w-3" /><span>{relativeTime(article.time)}</span></div></div><SaveButton active={saved.includes(article.id)} onClick={() => toggleSave(article.id)} /></article>)}</div></div><NewsAside articles={articles} onFinance={() => { setOnlyKeywords(false); setActiveCategory('증권') }} /></section>
       </> : <div className="rounded-2xl border border-dashed border-black/15 py-24 text-center"><Search className="mx-auto h-8 w-8 text-black/20" /><p className="mt-4 font-bold text-black/45">{showSaved ? '아직 저장한 뉴스가 없습니다.' : '조건에 맞는 뉴스가 없습니다.'}</p><button onClick={() => { resetHome(); setOnlyKeywords(false) }} className="mt-4 text-sm font-bold text-[#e65f3c]">전체 뉴스로 돌아가기</button></div>}
-    </main>
+    </main>}
     <footer className="border-t border-black/10 px-5 py-8 text-center text-[11px] text-black/35">TODAYNEWS TERMINAL · 중요한 뉴스를 더 적게, 더 빠르게</footer>
   </div>
 }
