@@ -21,3 +21,21 @@ export const sourceDefinitions: SourceDefinition[] = [
 ]
 
 export const defaultSourceIds = sourceDefinitions.map((source) => source.id)
+
+export type ExternalReference = {
+  id: string
+  name: string
+  url: string
+  description: string
+  status: 'ok' | 'browser-only' | 'redirect-error'
+}
+
+export const externalReferences: ExternalReference[] = [
+  { id: 'bigkinds', name: '빅카인즈', url: 'https://www.bigkinds.or.kr', description: '뉴스 빅데이터 분석', status: 'ok' },
+  { id: 'dealsite', name: '딜사이트', url: 'https://dealsite.co.kr', description: '자본시장 전문 미디어', status: 'ok' },
+  { id: 'thebell', name: '더벨', url: 'https://www.thebell.co.kr/front/index.asp', description: '자본시장 전문 미디어', status: 'ok' },
+  { id: 'theguru', name: '더구루', url: 'https://www.theguru.co.kr/news/section_list_all.html?sec_no=26', description: '기업·글로벌 뉴스', status: 'ok' },
+  { id: 'investing', name: 'Investing.com', url: 'https://kr.investing.com', description: '글로벌 금융시장 정보', status: 'browser-only' },
+  { id: 'kirs', name: '한국IR협의회', url: 'https://www.kirs.or.kr/support/schedule.html', description: 'IR 일정', status: 'redirect-error' },
+  { id: 'naver-research', name: '네이버 금융 리서치', url: 'https://finance.naver.com/research/', description: '증권사 리서치 자료', status: 'ok' },
+]
