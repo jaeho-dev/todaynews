@@ -1,10 +1,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Menu, Plus, RefreshCw, Search, Settings2, Sparkles, TrendingUp, X } from 'lucide-react'
+import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Plus, RefreshCw, Search, Settings2, Sparkles, TrendingUp, X } from 'lucide-react'
 import { SourceManager } from './components/SourceManager'
 import { relativeTime } from './lib/format'
+import { getJson, useArticles } from './lib/useArticles'
 import { useKeywords } from './lib/useKeywords'
 import { useSources } from './lib/useSources'
-import type { Article, MarketItem, NewsResponse } from './types'
+import type { Article, MarketItem } from './types'
 
 
 function loadSaved() {
@@ -14,79 +15,36 @@ function loadSaved() {
   } catch { return [] }
 }
 
-function uniqueArticles(groups: Article[][]) {
-  const result = new Map<string, Article>()
-  groups.flat().forEach((article) => {
-    const current = result.get(article.link)
-    result.set(article.link, current ? { ...current, matches: [...new Set([...current.matches, ...article.matches])] } : article)
-  })
-  return [...result.values()].sort((a, b) => b.time - a.time)
-}
-
-async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal })
-  if (!response.ok) throw new Error(`${response.status}`)
-  return response.json() as Promise<T>
-}
-
 function App() {
   const [query, setQuery] = useState('')
   const [mobileSearch, setMobileSearch] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [showSources, setShowSources] = useState(() => window.location.hash === '#sources')
   const [onlyKeywords, setOnlyKeywords] = useState(true)
-  const { keywords, activeKeywords, disabledKeywords, setKeywords, toggleKeyword } = useKeywords()
+  const { keywords, activeKeywords, disabledKeywords, setKeywords, toggleKeyword, removeKeyword } = useKeywords()
   const [enabledSources, setEnabledSources] = useSources()
   const [saved, setSaved] = useState<string[]>(loadSaved)
   const [keywordInput, setKeywordInput] = useState('')
   const [showKeywordForm, setShowKeywordForm] = useState(false)
-  const [articles, setArticles] = useState<Article[]>([])
   const [market, setMarket] = useState<MarketItem[]>([])
-  const [failed, setFailed] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const refresh = useCallback(() => setRefreshKey((value) => value + 1), [])
+  // fetch는 keywords(전체)가 결정하고, activeKeywords는 아래 화면 필터에만 쓴다.
+  const { articles, failed, loadError, pendingKeywords, initialLoading, refreshing } = useArticles(keywords, enabledSources, refreshKey)
 
   useEffect(() => localStorage.setItem('todaynews-saved', JSON.stringify(saved)), [saved])
 
+  // 켜진 키워드가 하나라도 있으면 '관심 뉴스만', 전부 꺼졌거나 Google 뉴스를 껐으면 '전체 뉴스'.
+  // 끄기만 하고 되돌리지 않으면 전부 해제 후 다시 켤 때 전체 뉴스에 머무른다.
   useEffect(() => {
-    if (!enabledSources.includes('google-news')) setOnlyKeywords(false)
-  }, [enabledSources])
-
-  useEffect(() => {
-    if (activeKeywords.length === 0) setOnlyKeywords(false)
-  }, [activeKeywords.length])
+    setOnlyKeywords(activeKeywords.length > 0 && enabledSources.includes('google-news'))
+  }, [activeKeywords.length, enabledSources])
 
   useEffect(() => {
     const syncPage = () => setShowSources(window.location.hash === '#sources')
     window.addEventListener('hashchange', syncPage)
     return () => window.removeEventListener('hashchange', syncPage)
   }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    async function loadNews() {
-      setLoading(true)
-      setLoadError('')
-      try {
-        const newsSources = enabledSources.filter((source) => !['google-news', 'frankfurter', 'upbit', 'finnhub'].includes(source))
-        const [main, ...searches] = await Promise.all([
-          getJson<NewsResponse>(`/api/news?sources=${encodeURIComponent(newsSources.join(','))}`, controller.signal),
-          ...(enabledSources.includes('google-news') ? activeKeywords : []).map((keyword) => getJson<NewsResponse>(`/api/search?q=${encodeURIComponent(keyword)}`, controller.signal)
-            .catch(() => ({ articles: [], failed: [keyword], fetchedAt: Date.now() }))),
-        ])
-        setArticles(uniqueArticles([main.articles, ...searches.map((item) => item.articles)]))
-        setFailed([...main.failed, ...searches.flatMap((item) => item.failed)])
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') setLoadError('뉴스를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.')
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
-      }
-    }
-    loadNews()
-    return () => controller.abort()
-  }, [activeKeywords, enabledSources, refreshKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -137,15 +95,15 @@ function App() {
     {showSources ? <SourceManager enabled={enabledSources} onChange={setEnabledSources} onClose={closeSources} /> : <main className="mx-auto max-w-[1440px] px-5 pb-20 pt-10 sm:px-8 lg:px-12 lg:pt-14">
       <section className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div><p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#e65f3c]">{showSaved ? 'MY ARCHIVE' : 'DAILY BRIEFING'}</p><h1 className="text-3xl font-black tracking-[-0.05em] sm:text-5xl">{showSaved ? '저장한 뉴스' : '오늘의 핵심만,'}<br className="sm:hidden" />{!showSaved && ' 빠르게.'}</h1><p className="mt-3 text-sm text-black/50">{showSaved ? `${saved.length}개의 기사를 보관했습니다.` : `${dateText} · ${articles.length}개 기사 업데이트`}</p></div>
-        {!showSaved && <div className="flex flex-wrap items-end gap-5 border-y border-black/10 py-3 sm:border-0 sm:py-0">{market.map((item) => <div key={item.id} className="min-w-24"><p className="text-[10px] font-bold text-black/40">{item.name}</p><p className="mt-1 truncate text-sm font-black">{item.value}</p>{item.change !== null && <p className={`text-[11px] font-bold ${item.change >= 0 ? 'text-[#e65f3c]' : 'text-[#375bd2]'}`}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%</p>}</div>)}<button onClick={refresh} disabled={loading} className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-white disabled:opacity-40" aria-label="새로고침"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></button></div>}
+        {!showSaved && <div className="flex flex-wrap items-end gap-5 border-y border-black/10 py-3 sm:border-0 sm:py-0">{market.map((item) => <div key={item.id} className="min-w-24"><p className="text-[10px] font-bold text-black/40">{item.name}</p><p className="mt-1 truncate text-sm font-black">{item.value}</p>{item.change !== null && <p className={`text-[11px] font-bold ${item.change >= 0 ? 'text-[#e65f3c]' : 'text-[#375bd2]'}`}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%</p>}</div>)}<button onClick={refresh} disabled={refreshing} className="grid h-9 w-9 place-items-center rounded-full border border-black/10 bg-white disabled:opacity-40" aria-label="새로고침"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /></button></div>}
       </section>
 
       {failed.length > 0 && <div className="mb-6 flex items-start gap-2 rounded-xl border border-amber-700/15 bg-amber-50 px-4 py-3 text-xs text-amber-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{[...new Set(failed)].join(', ')} 데이터를 불러오지 못했습니다. 다른 뉴스는 정상적으로 표시됩니다.</span></div>}
       {loadError && <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-700/15 bg-red-50 px-4 py-3 text-sm text-red-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{loadError}</span></div>}
 
-      {!showSaved && <section className="mb-10"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">MY INTERESTS</p><h2 className="mt-1 text-xl font-black tracking-[-0.03em]">내 관심 키워드</h2></div><div className="flex items-center gap-2"><button onClick={() => setOnlyKeywords(!onlyKeywords)} disabled={activeKeywords.length === 0} className={`rounded-full border px-3 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35 ${onlyKeywords ? 'border-[#171914] bg-[#171914] text-white' : 'border-black/10 bg-white'}`}>{onlyKeywords ? '관심 뉴스만' : '전체 뉴스'}</button><button onClick={() => setShowKeywordForm(!showKeywordForm)} className="flex items-center gap-1 text-xs font-bold text-black/55 hover:text-black"><Plus className="h-4 w-4" /> 키워드 추가</button></div></div><div className="flex flex-wrap gap-2">{keywords.map((keyword) => { const active = !disabledKeywords.includes(keyword); return <span key={keyword} className={`group flex items-center gap-1 rounded-full border pr-3 text-sm font-bold transition ${active ? 'border-[#e65f3c]/25 bg-[#fff8f5]' : 'border-dashed border-black/15 bg-black/[0.03] text-black/35'}`}><button onClick={() => toggleKeyword(keyword)} aria-pressed={active} title={`${keyword} ${active ? '끄기' : '켜기'}`} className="py-2 pl-3.5">{keyword}</button><button onClick={() => setKeywords((current) => current.filter((item) => item !== keyword))} className="ml-1 opacity-35 transition hover:opacity-100" aria-label={`${keyword} 삭제`} title={`${keyword} 삭제`}><X className="h-3.5 w-3.5" /></button></span> })}{showKeywordForm && <form onSubmit={addKeyword} className="flex items-center rounded-full border border-[#e65f3c] bg-white pl-4 pr-1"><input autoFocus maxLength={50} value={keywordInput} onChange={(event) => setKeywordInput(event.target.value)} className="w-24 bg-transparent text-sm outline-none" placeholder="키워드" /><button className="rounded-full bg-[#e65f3c] px-3 py-1.5 text-xs font-bold text-white">추가</button></form>}</div><p className="mt-2 text-[11px] text-black/35">키워드를 눌러 켜고 끌 수 있어요 · 최대 8개 · 공유 주소에도 선택 상태가 유지됩니다.</p></section>}
+      {!showSaved && <section className="mb-10"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-black/35">MY INTERESTS</p><h2 className="mt-1 text-xl font-black tracking-[-0.03em]">내 관심 키워드</h2></div><div className="flex items-center gap-2"><button onClick={() => setOnlyKeywords(!onlyKeywords)} disabled={activeKeywords.length === 0} className={`rounded-full border px-3 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-35 ${onlyKeywords ? 'border-[#171914] bg-[#171914] text-white' : 'border-black/10 bg-white'}`}>{onlyKeywords ? '관심 뉴스만' : '전체 뉴스'}</button><button onClick={() => setShowKeywordForm(!showKeywordForm)} className="flex items-center gap-1 text-xs font-bold text-black/55 hover:text-black"><Plus className="h-4 w-4" /> 키워드 추가</button></div></div><div className="flex flex-wrap gap-2">{keywords.map((keyword) => { const active = !disabledKeywords.includes(keyword); const pending = pendingKeywords.includes(keyword); return <span key={keyword} className={`group flex items-center gap-1 rounded-full border pr-3 text-sm font-bold transition ${active ? 'border-[#e65f3c]/25 bg-[#fff8f5]' : 'border-dashed border-black/15 bg-black/[0.03] text-black/35'}`}><button onClick={() => toggleKeyword(keyword)} aria-pressed={active} title={`${keyword} ${active ? '끄기' : '켜기'}`} className="flex items-center gap-1.5 py-2 pl-3.5">{pending && <RefreshCw className="h-3 w-3 animate-spin text-black/35" />}{keyword}</button><button onClick={() => removeKeyword(keyword)} className="ml-1 opacity-35 transition hover:opacity-100" aria-label={`${keyword} 삭제`} title={`${keyword} 삭제`}><X className="h-3.5 w-3.5" /></button></span> })}{showKeywordForm && <form onSubmit={addKeyword} className="flex items-center rounded-full border border-[#e65f3c] bg-white pl-4 pr-1"><input autoFocus maxLength={50} value={keywordInput} onChange={(event) => setKeywordInput(event.target.value)} className="w-24 bg-transparent text-sm outline-none" placeholder="키워드" /><button className="rounded-full bg-[#e65f3c] px-3 py-1.5 text-xs font-bold text-white">추가</button></form>}</div><p className="mt-2 text-[11px] text-black/35">키워드를 눌러 켜고 끌 수 있어요 · 최대 8개 · 공유 주소에도 선택 상태가 유지됩니다.</p></section>}
 
-      {loading && articles.length === 0 ? <div className="grid place-items-center py-28 text-sm font-bold text-black/40"><RefreshCw className="mb-4 h-7 w-7 animate-spin" />오늘의 뉴스를 모으는 중입니다.</div> : lead ? <>
+      {initialLoading ? <div className="grid place-items-center py-28 text-sm font-bold text-black/40"><RefreshCw className="mb-4 h-7 w-7 animate-spin" />오늘의 뉴스를 모으는 중입니다.</div> : lead ? <>
         {!showSaved && <section className="grid overflow-hidden rounded-2xl border border-black/10 bg-white shadow-card lg:grid-cols-[1.45fr_0.55fr]"><div className="p-6 sm:p-9 lg:p-11"><div className="mb-7 flex items-center gap-2"><span className="flex items-center gap-1.5 rounded-full bg-[#fff0eb] px-3 py-1.5 text-[11px] font-black text-[#d94d2b]"><Flame className="h-3.5 w-3.5" fill="currentColor" /> 최신 주요 뉴스</span></div><p className="mb-3 text-xs font-bold text-[#e65f3c]">{lead.category}{lead.matches.length > 0 && ` · ${lead.matches.join(', ')}`}</p><a href={lead.link} target="_blank" rel="noopener noreferrer"><h2 className="max-w-3xl text-[28px] font-black leading-[1.22] tracking-[-0.045em] transition hover:text-[#e65f3c] sm:text-[42px]">{lead.title}</h2></a><div className="mt-7 border-l-2 border-[#e65f3c] pl-4 sm:pl-5"><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-black/40"><Sparkles className="h-3.5 w-3.5 text-[#e65f3c]" /> RSS 요약</p><p className="max-w-2xl text-sm leading-7 text-black/65">{lead.summary}</p></div><div className="mt-8 flex items-center justify-between"><div className="flex items-center gap-2 text-xs text-black/40"><span className="font-bold text-black/70">{lead.outlet}</span><span>·</span><span>{relativeTime(lead.time)}</span></div><SaveButton active={saved.includes(lead.id)} onClick={() => toggleSave(lead.id)} /></div></div><div className="relative hidden min-h-[420px] overflow-hidden bg-[#1d2928] lg:block"><div className="absolute -right-20 -top-10 h-72 w-72 rounded-full border-[48px] border-[#e65f3c]/90" /><div className="absolute -bottom-28 -left-20 h-80 w-80 rounded-full border-[65px] border-[#d6c892]/70" /><div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/30" /><div className="absolute bottom-8 left-8 right-8 text-white"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">TODAY'S SIGNAL</p><p className="mt-2 text-lg font-bold">관심 있는 변화만<br />놓치지 마세요.</p></div></div></section>}
         <section className="mt-14 grid gap-10 lg:grid-cols-[1fr_330px]"><div><div className="mb-2 flex items-center justify-between"><h2 className="text-xl font-black tracking-[-0.03em]">{showSaved ? '보관한 기사' : onlyKeywords ? '관심 키워드 주요 뉴스' : '전체 주요 뉴스'}</h2><span className="text-xs text-black/35">{filtered.length}개 뉴스</span></div><div className="divide-y divide-black/10">{list.map((article) => <article key={article.id} className="group grid gap-4 py-6 sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><div className="mb-2 flex items-center gap-2"><span className="rounded bg-black/[0.06] px-2 py-1 text-[10px] font-black">{article.matches[0] ?? article.category}</span></div><a href={article.link} target="_blank" rel="noopener noreferrer"><h3 className="text-lg font-black leading-snug tracking-[-0.025em] transition group-hover:text-[#e65f3c] sm:text-xl">{article.title}</h3></a><p className="mt-2 line-clamp-2 text-sm leading-6 text-black/50">{article.summary}</p><div className="mt-3 flex items-center gap-2 text-[11px] text-black/35"><span className="font-bold text-black/60">{article.outlet}</span><span>·</span><Clock3 className="h-3 w-3" /><span>{relativeTime(article.time)}</span></div></div><SaveButton active={saved.includes(article.id)} onClick={() => toggleSave(article.id)} /></article>)}</div></div><NewsAside articles={articles} onShowAll={() => setOnlyKeywords(false)} /></section>
       </> : <div className="rounded-2xl border border-dashed border-black/15 py-24 text-center"><Search className="mx-auto h-8 w-8 text-black/20" /><p className="mt-4 font-bold text-black/45">{showSaved ? '아직 저장한 뉴스가 없습니다.' : '조건에 맞는 뉴스가 없습니다.'}</p><button onClick={() => { resetHome(); setOnlyKeywords(false) }} className="mt-4 text-sm font-bold text-[#e65f3c]">전체 뉴스로 돌아가기</button></div>}
