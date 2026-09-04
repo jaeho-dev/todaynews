@@ -35,4 +35,8 @@ Thumbs.db
 # TypeScript and Vite caches
 *.tsbuildinfo
 .vite/
+vite.config.js
+vite.config.d.ts
 
+.vercel
+.env*
