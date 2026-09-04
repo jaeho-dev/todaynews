@@ -146,7 +146,7 @@ function App() {
           <button className="lg:hidden" aria-label="메뉴"><Menu className="h-5 w-5" /></button>
           <button onClick={() => { setShowSaved(false); setActiveCategory('전체'); setQuery('') }} className="flex shrink-0 items-center gap-2.5 text-left">
             <span className="grid h-8 w-8 place-items-center bg-[#e65f3c] text-white"><TrendingUp className="h-4 w-4" strokeWidth={2.5} /></span>
-            <span className="text-[17px] font-black tracking-[-0.03em]">MYNEWS<span className="text-[#e65f3c]">.</span></span>
+            <span className="text-[17px] font-black tracking-[-0.03em]">TODAYNEWS<span className="text-[#e65f3c]">.</span></span>
           </button>
           <span className="hidden h-5 w-px bg-black/15 sm:block" />
           <p className="hidden text-xs font-medium text-black/45 sm:block">나만의 인사이트 터미널</p>
