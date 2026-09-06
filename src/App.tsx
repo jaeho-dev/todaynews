@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Plus, RefreshCw, Search, Settings2, Sparkles, TrendingUp, X } from 'lucide-react'
+import { AlertCircle, Bookmark, BookmarkCheck, ChevronRight, Clock3, Flame, Globe2, Landmark, Newspaper, Plus, RefreshCw, Search, Settings2, Sparkles, TrendingUp, X } from 'lucide-react'
 import { SourceManager } from './components/SourceManager'
 import { relativeTime } from './lib/format'
 import { getJson, useArticles } from './lib/useArticles'
@@ -82,7 +82,7 @@ function App() {
   return <div className="min-h-screen bg-[#f4f4ef] text-[#171914]">
     <header className="sticky top-0 z-30 border-b border-black/10 bg-[#f4f4ef]/95 backdrop-blur">
       <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-5 px-5 sm:px-8 lg:px-12">
-        <button onClick={resetHome} className="flex shrink-0 items-center gap-2.5 text-left"><span className="grid h-8 w-8 place-items-center bg-[#e65f3c] text-white"><TrendingUp className="h-4 w-4" strokeWidth={2.5} /></span><span className="text-[17px] font-black tracking-[-0.03em]">TODAYNEWS<span className="text-[#e65f3c]">.</span></span></button>
+        <button onClick={resetHome} className="flex shrink-0 items-center gap-2.5 text-left"><span className="grid h-8 w-8 place-items-center bg-[#e65f3c] text-white"><Newspaper className="h-4 w-4" strokeWidth={2.5} /></span><span className="text-[17px] font-black tracking-[-0.03em]">TODAYNEWS<span className="text-[#e65f3c]">.</span></span></button>
         <span className="hidden h-5 w-px bg-black/15 sm:block" /><p className="hidden text-xs font-medium text-black/45 sm:block">나만의 인사이트 터미널</p>
         <div className="ml-auto hidden w-full max-w-sm items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2.5 md:flex"><Search className="h-4 w-4 text-black/35" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none placeholder:text-black/35" placeholder="뉴스, 기업, 키워드 검색" />{query && <button onClick={() => setQuery('')} aria-label="검색어 지우기"><X className="h-3.5 w-3.5 text-black/40" /></button>}</div>
         <button onClick={() => setMobileSearch(!mobileSearch)} className="md:hidden" aria-label="검색"><Search className="h-5 w-5" /></button>
